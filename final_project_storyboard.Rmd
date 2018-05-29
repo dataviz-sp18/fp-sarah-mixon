@@ -1,0 +1,232 @@
+---
+title: "Detroit, Michigan"
+output: 
+    flexdashboard::flex_dashboard:
+    storyboard: true 
+---
+
+```{r setup, include=FALSE}
+
+library(flexdashboard)
+library(tidycensus)
+library(tidyverse)
+options(tigris_use_cache = TRUE)
+library(ggplot2)
+library(sf)
+library(tmap)
+library(viridis)
+library(devtools)
+library(leaflet)
+library(stringr)
+library(highcharter)
+
+detroit_population_change <- read_csv("detroit_population.csv")
+
+
+census_api_key("2cb24b255d5b7f9ce4bc9f2ea6d0be84276786ff")
+```
+Rise and Fall and ...Rise {.storyboard}
+==========================================================================================
+
+### The collapse of Detroit's population has resulted in large numbers of abandoned homes and commercial buildings, and areas of the city hit hard by urban decay. 
+
+```{r change in pop}
+
+highchart() %>%
+  hc_xAxis(categories = detroit_population_change$census) %>%
+  hc_add_series(name = "population", data = detroit_population_change$population)
+
+```  
+
+*** 
+####__Shrinking City__. 
+##### Detroit has seen a dramatic decline in population over the past 60 years. While the drop has been ongoing since 1950, the most dramatic period has been between 2000 and 2010. Amidst a rejuvenation of the city, however, vulnerable groups still struggle to survive. 
+  
+
+
+### Distribution of Poverty 
+
+```{r}
+# social vulnerability index variables
+vul_vars <- c("B17001_001", "B17001_002", "B02001_001", "B02001_002", "B01001_003", "B01001_020", "B01001_021", "B01001_022", "B01001_023",
+"B01001_024", "B01001_025", "B01001_027", "B01001_044", "B01001_045", "B01001_046", "B01001_047", "B01001_048", "B01001_049")
+
+# data for wayne county
+detroit_vul <- get_acs(geography = "tract", 
+                       variables = vul_vars,
+                       state = "MI",
+                       county = "Wayne", 
+                       output = "wide",
+                       geometry = TRUE)
+
+detroit_vul <- detroit_vul %>%
+  mutate(CountyFIPS = str_sub(GEOID, 1, 5))
+
+# calculate percentages and rename variables
+detroit_vul_clean <- detroit_vul %>%
+  mutate(pov_share = B17001_002E/B17001_001E,
+         non_white = (B02001_001E-B02001_002E)/B02001_001E,
+         under_five = (B01001_003E + B01001_027E)/B02001_001E,
+         elderly_male = B01001_020E + B01001_021E + B01001_022E + B01001_023E + B01001_024E + B01001_025E,
+         elderly_female = B01001_044E +  B01001_045E + B01001_046E + B01001_047E + B01001_048E + B01001_049E,
+         elderly = (elderly_female + elderly_male)/B02001_001E) %>%
+  select(NAME, GEOID, CountyFIPS, pov_share, non_white, under_five, elderly)
+
+# z-scores for each vulnerability variable
+detroit_vul_clean <- detroit_vul_clean %>%
+  mutate(
+    pov_z = (pov_share - mean(pov_share, na.rm = TRUE))/sd(pov_share, na.rm = TRUE),
+    non_white_z = (non_white - mean(non_white, na.rm = TRUE))/sd(non_white, na.rm = TRUE),
+    under_five_z = (under_five - mean(under_five, na.rm = TRUE))/sd(under_five, na.rm = TRUE),
+    elderly_z = (elderly - mean(elderly, na.rm = TRUE))/sd(elderly, na.rm = TRUE)
+  )
+
+detroit_vul_clean <- detroit_vul_clean %>%
+  mutate(vul_index = (pov_z + non_white_z + under_five_z + elderly_z)/4) %>%
+  select(GEOID, NAME, CountyFIPS, pov_z, non_white_z, under_five_z, elderly_z, vul_index)
+
+# distribution of poverty
+pal_pov <- colorNumeric(palette = "viridis", domain = detroit_vul_clean$pov_z)
+
+detroit_vul_clean %>%
+  st_transform(crs = "+init=epsg:4326") %>%
+  leaflet(width = "100%") %>%
+  addProviderTiles(provider = "CartoDB.Positron") %>%
+  addPolygons(popup = ~str_extract(NAME, "^([^,]*)"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.5,
+              color = ~pal_pov(pov_z)) %>%
+  addLegend("bottomright",
+            pal = pal_pov,
+            values = ~ pov_z,
+            title = "poverty z-score",
+            opacity = 1)
+```
+
+*** 
+#### __Above Average Poverty.__  
+
+##### Z-scores, also called standard scores, provide a statistical method for normalizing each variable onto a similar numeric scale.  
+
+##### The lighter areas around Detroit represent areas that experience above average poverty, with yellow representing areas of higher than average poverty and purple representing areas of lower than average poverty. 
+  
+  
+### Distribution of Non-White Population
+```{r non white}
+
+# distribution of nonwhite
+pal_nonwhite <- colorNumeric(palette = "viridis", domain = detroit_vul_clean$non_white_z)
+
+detroit_vul_clean %>%
+  st_transform(crs = "+init=epsg:4326") %>%
+  leaflet(width = "100%") %>%
+  addProviderTiles(provider = "CartoDB.Positron") %>%
+  addPolygons(popup = ~str_extract(NAME, "^([^,]*)"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.5,
+              color = ~pal_nonwhite(non_white_z)) %>%
+  addLegend("bottomright",
+            pal = pal_nonwhite,
+            values = ~ non_white_z,
+            title = "non white z-score",
+            opacity = 1)
+```
+
+*** 
+#### __White Flight.__
+
+#### The decline in Detroit's population is largely due to the exodus of white families. Today, we see a distinct demarcation between below average and above average levels of the non-white population.   
+
+  
+### Distribution of Population Under Five 
+```{r under five}
+
+# distribution of under five
+pal_underfive <- colorNumeric(palette = "viridis", domain = detroit_vul_clean$under_five_z)
+
+detroit_vul_clean %>%
+  st_transform(crs = "+init=epsg:4326") %>%
+  leaflet(width = "100%") %>%
+  addProviderTiles(provider = "CartoDB.Positron") %>%
+  addPolygons(popup = ~str_extract(NAME, "^([^,]*)"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.5,
+              color = ~pal_underfive(under_five_z)) %>%
+  addLegend("bottomright",
+            pal = pal_underfive,
+            values = ~ under_five_z,
+            title = "under five z-score",
+            opacity = 1)
+```
+
+*** 
+####__Dependents.__ 
+
+##### Children, dependent on parents and families, have minimal autonomy, and, therefore are vulnerable to their existing environment and circumstances. 
+  
+  
+### Distribution of Population over 64
+```{r elderly}
+
+# distribution of elderly
+pal_elderly <- colorNumeric(palette = "viridis", domain = detroit_vul_clean$elderly_z)
+
+detroit_vul_clean %>%
+  st_transform(crs = "+init=epsg:4326") %>%
+  leaflet(width = "100%") %>%
+  addProviderTiles(provider = "CartoDB.Positron") %>%
+  addPolygons(popup = ~str_extract(NAME, "^([^,]*)"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.5,
+              color = ~pal_elderly(elderly_z)) %>%
+  addLegend("bottomright",
+            pal = pal_elderly,
+            values = ~ elderly_z,
+            title = "elderly",
+            opacity = 1)
+```
+
+**** 
+#### __Dependence.__
+
+##### While not true for all, the elderly may lack the physical abilities necessary to live independently and are more likely to need access to social programs. 
+
+  
+### Amidst its rejuvenation, the inclusion of the city's most vulnerable groups is vital to ensure the future success of Detroit.  
+```{r vulnerability index}
+
+# map of vulnerability index 
+pal_vul <- colorNumeric(palette = "viridis", domain = detroit_vul_clean$vul_index)
+
+detroit_vul_clean %>%
+  st_transform(crs = "+init=epsg:4326") %>%
+  leaflet(width = "100%") %>%
+  addProviderTiles(provider = "CartoDB.Positron") %>%
+  addPolygons(popup = ~str_extract(NAME, "^([^,]*)"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.5,
+              color = ~pal_vul(vul_index)) %>%
+  addLegend("bottomright",
+            pal = pal_vul,
+            values = ~ vul_index,
+            title = "vulnerability index",
+            opacity = 1)
+```
+
+*** 
+#### __Social Vulnerability.__ 
+##### Social vulnerability has been used to describe the characteristics of a population that influence how they will be affected by a natural hazard or disaster event. Common factors that influence this index include levels of monetary and material resources, access to appropriate information, strength of social networks, physical abilities, and political influence. More generally, populations with less socio-economic resources or that have limited physical abilities will tend to be more vulnerable to physical or long-term economic harm. 
+
+##### Using easily accessible census data, a simple version of the Social Vulnerability Index can show those areas in Detroit that are home to the most vulnerable populations. 
+
+
+
+
+
+
+
