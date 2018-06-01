@@ -3,6 +3,8 @@ title: "Detroit, Michigan"
 output: 
     flexdashboard::flex_dashboard:
     storyboard: true 
+    social: menu
+    source_code: embed
 ---
 
 ```{r setup, include=FALSE}
@@ -15,6 +17,7 @@ library(ggplot2)
 library(sf)
 library(tmap)
 library(viridis)
+library(RColorBrewer)
 library(devtools)
 library(leaflet)
 library(stringr)
@@ -27,9 +30,64 @@ census_api_key("2cb24b255d5b7f9ce4bc9f2ea6d0be84276786ff")
 ```
 Rise and Fall and ...Rise {.storyboard}
 ==========================================================================================
+  
+### Child Well-Being in Michigan
+  
+  
+#### The 2017 KIDS COUNT Data Book ranks Michigan 32nd in overall child well-being and last in the Midwest region. Compared to other states, children in Michigan rank low in both economic security and education. Due to structural and institutional barriers, kids and families of color experience disparate outcomes compared with their white counterparts.   
 
-### The collapse of Detroit's population has resulted in large numbers of abandoned homes and commercial buildings, and areas of the city hit hard by urban decay. 
+##### (_Source: Michigan League of Public Policy_)    
 
+<center>
+![MERCEDES MEJIA / MICHIGAN RADIO](detroit_schools_sarah_hulett.jpg)
+<center>
+
+
+
+### There are distinct demarcations along race in Michigan.  
+```{r race across the state}
+
+# get race variables
+race_vars <- c(White = "B02008_001",
+               Black = "B02009_001",
+               American_Indian = "B02010_001",
+               Asian = "B02011_001")
+
+mi_race <- get_acs(geography = "county",
+                   variables = race_vars,
+                   summary_var = "B01003_001", 
+                   state = "MI",
+                   geometry = TRUE)
+
+# by race by county
+mi_race %>%
+  # percent total of each column
+  mutate(percent_of_county_pop = 100 * (estimate / summary_est)) %>%
+  # facet maps
+  ggplot(aes(fill = percent_of_county_pop, color = percent_of_county_pop)) +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank()) + 
+  facet_wrap(~variable) +
+  geom_sf() + 
+    coord_sf(crs = 26915) + 
+  scale_fill_viridis(option = "C") +
+  scale_color_viridis(option = "C")
+```  
+
+*** 
+#### __Race and Education__.  
+##### In December 2017, Michigan Radio reported that schools in Michigan are among the most segregated in the US.   
+##### A similar story in the "_Detroit News_" pointed out that high levels of segregation correspond with low achievement and fewer students, on average, reaching state standards for proficiency in reading and math. 
+  
+##### Concerned about children of color, the rest of this analysis will focus on at-risk indicators for children of color living in Detroit.  
+
+##### _Source: <http://michiganradio.org/post/report-michigan-schools-second-most-segregated-nation>_
+
+  
+  
+### Detroit has suffered a huge decrease in population, leaving the city in urban decay. This has impacted mostly families and children of color. 
 ```{r change in pop}
 
 highchart() %>%
@@ -40,16 +98,15 @@ highchart() %>%
 
 *** 
 ####__Shrinking City__. 
-##### Detroit has seen a dramatic decline in population over the past 60 years. While the drop has been ongoing since 1950, the most dramatic period has been between 2000 and 2010. Amidst a rejuvenation of the city, however, vulnerable groups still struggle to survive. 
-  
+##### The president of the Michigan Association of Public School Academies says the lack of diversity in the schools is a reflection of where people are living.  
+##### Detroit has seen a dramatic decline in population over the past 60 years. This is largely due to 'white flight', or the exodus of white families from cities to suburbs.  
+##### These economic and social issues go beyond the segregated school systems, and, as Detroit begins to rebuild itself, these issues need to be addressed head on.   
 
+### Within Detroit, minority and majority populations are not evenly distributed. 
+```{r non white}
 
-### Distribution of Poverty 
-
-```{r}
 # social vulnerability index variables
-vul_vars <- c("B17001_001", "B17001_002", "B02001_001", "B02001_002", "B01001_003", "B01001_020", "B01001_021", "B01001_022", "B01001_023",
-"B01001_024", "B01001_025", "B01001_027", "B01001_044", "B01001_045", "B01001_046", "B01001_047", "B01001_048", "B01001_049")
+vul_vars <- c("B17001_001", "B17001_002", "B02001_001", "B02001_002", "B01001_003","B01001_004", "B01001_005", "B01001_006", "B01001_027","B01001_028", "B01001_029", "B01001_030", "B23008_007", "B23008_011", "B23008_014", "B23008_020", "B23008_024", "B23008_027")
 
 # data for wayne county
 detroit_vul <- get_acs(geography = "tract", 
@@ -64,59 +121,16 @@ detroit_vul <- detroit_vul %>%
 
 # calculate percentages and rename variables
 detroit_vul_clean <- detroit_vul %>%
-  mutate(pov_share = B17001_002E/B17001_001E,
-         non_white = (B02001_001E-B02001_002E)/B02001_001E,
-         under_five = (B01001_003E + B01001_027E)/B02001_001E,
-         elderly_male = B01001_020E + B01001_021E + B01001_022E + B01001_023E + B01001_024E + B01001_025E,
-         elderly_female = B01001_044E +  B01001_045E + B01001_046E + B01001_047E + B01001_048E + B01001_049E,
-         elderly = (elderly_female + elderly_male)/B02001_001E) %>%
-  select(NAME, GEOID, CountyFIPS, pov_share, non_white, under_five, elderly)
-
-# z-scores for each vulnerability variable
-detroit_vul_clean <- detroit_vul_clean %>%
-  mutate(
-    pov_z = (pov_share - mean(pov_share, na.rm = TRUE))/sd(pov_share, na.rm = TRUE),
-    non_white_z = (non_white - mean(non_white, na.rm = TRUE))/sd(non_white, na.rm = TRUE),
-    under_five_z = (under_five - mean(under_five, na.rm = TRUE))/sd(under_five, na.rm = TRUE),
-    elderly_z = (elderly - mean(elderly, na.rm = TRUE))/sd(elderly, na.rm = TRUE)
-  )
-
-detroit_vul_clean <- detroit_vul_clean %>%
-  mutate(vul_index = (pov_z + non_white_z + under_five_z + elderly_z)/4) %>%
-  select(GEOID, NAME, CountyFIPS, pov_z, non_white_z, under_five_z, elderly_z, vul_index)
-
-# distribution of poverty
-pal_pov <- colorNumeric(palette = "viridis", domain = detroit_vul_clean$pov_z)
-
-detroit_vul_clean %>%
-  st_transform(crs = "+init=epsg:4326") %>%
-  leaflet(width = "100%") %>%
-  addProviderTiles(provider = "CartoDB.Positron") %>%
-  addPolygons(popup = ~str_extract(NAME, "^([^,]*)"),
-              stroke = FALSE,
-              smoothFactor = 0,
-              fillOpacity = 0.5,
-              color = ~pal_pov(pov_z)) %>%
-  addLegend("bottomright",
-            pal = pal_pov,
-            values = ~ pov_z,
-            title = "poverty z-score",
-            opacity = 1)
-```
-
-*** 
-#### __Above Average Poverty.__  
-
-##### Z-scores, also called standard scores, provide a statistical method for normalizing each variable onto a similar numeric scale.  
-
-##### The lighter areas around Detroit represent areas that experience above average poverty, with yellow representing areas of higher than average poverty and purple representing areas of lower than average poverty. 
-  
-  
-### Distribution of Non-White Population
-```{r non white}
+  mutate(pov_share = 100* (B17001_002E/B17001_001E),
+         non_white = 100* ((B02001_001E-B02001_002E)/B02001_001E),
+         males0_17 = (B01001_003E + B01001_004E + B01001_005E + B01001_006E),
+         females0_17 = (B01001_027E + B01001_028E + B01001_029E + B01001_030E),
+         pop_under_17 = 100* ((males0_17 + females0_17)/B02001_001E),
+         unemployed_with_children = 100* (B23008_007E + B23008_011E + B23008_014E + B23008_020E + B23008_024E + B23008_027E)/B02001_001E) %>%
+  select(NAME, GEOID, CountyFIPS, pov_share, non_white, pop_under_17, unemployed_with_children)
 
 # distribution of nonwhite
-pal_nonwhite <- colorNumeric(palette = "viridis", domain = detroit_vul_clean$non_white_z)
+pal_nonwhite <- colorNumeric(palette = "plasma", domain = detroit_vul_clean$non_white)
 
 detroit_vul_clean %>%
   st_transform(crs = "+init=epsg:4326") %>%
@@ -126,25 +140,26 @@ detroit_vul_clean %>%
               stroke = FALSE,
               smoothFactor = 0,
               fillOpacity = 0.5,
-              color = ~pal_nonwhite(non_white_z)) %>%
+              color = ~pal_nonwhite(non_white)) %>%
   addLegend("bottomright",
             pal = pal_nonwhite,
-            values = ~ non_white_z,
-            title = "non white z-score",
+            values = ~ non_white,
+            title = "Non-White Households",
+            labFormat = labelFormat(suffix = "%"), 
             opacity = 1)
 ```
 
 *** 
 #### __White Flight.__
 
-#### The decline in Detroit's population is largely due to the exodus of white families. Today, we see a distinct demarcation between below average and above average levels of the non-white population.   
+#### The decline in Detroit's population is largely due to the exodus of white families. Today, we see a considerable clustering of non-white households around Detroit. 
 
-  
-### Distribution of Population Under Five 
-```{r under five}
 
-# distribution of under five
-pal_underfive <- colorNumeric(palette = "viridis", domain = detroit_vul_clean$under_five_z)
+### Detroit has seen a decline in the percentage of people living in poverty, though the city's poverty rate has remained higher than both the state and national average.  
+```{r poverty}
+
+# distribution of poverty
+pal_pov <- colorNumeric(palette = "plasma", domain = detroit_vul_clean$pov_share)
 
 detroit_vul_clean %>%
   st_transform(crs = "+init=epsg:4326") %>%
@@ -154,50 +169,69 @@ detroit_vul_clean %>%
               stroke = FALSE,
               smoothFactor = 0,
               fillOpacity = 0.5,
-              color = ~pal_underfive(under_five_z)) %>%
+              color = ~pal_pov(pov_share)) %>%
   addLegend("bottomright",
-            pal = pal_underfive,
-            values = ~ under_five_z,
-            title = "under five z-score",
+            pal = pal_pov,
+            values = ~ pov_share,
+            title = "Low-Income Households",
+            labFormat = labelFormat(suffix = "%"),
+            opacity = 1)
+
+```
+
+*** 
+#### __High Rates of Poverty.__    
+##### Detroit is one of the most impoverished cities with approximately 39.3% living below a poverty line of $24,008 for a family of four. The economic recovery has not had an impact on poverty or wage levels across the state. 
+
+##### _Source: <https://www.detroitnews.com/story/news/local/michigan/2015/09/16/census-us-uninsured-drops-income-stagnates/32499231/>_
+  
+ 
+
+  
+### Those economically challenged households cluster around the city of Detroit. 
+```{r children and unemployment}
+
+# unemployed parents
+pal_children <- colorNumeric(palette = "plasma", domain = detroit_vul_clean$unemployed_with_children)
+
+detroit_vul_clean %>%
+  st_transform(crs = "+init=epsg:4326") %>%
+  leaflet(width = "100%") %>%
+  addProviderTiles(provider = "CartoDB.Positron") %>%
+  addPolygons(popup = ~str_extract(NAME, "^([^,]*)"),
+              stroke = FALSE,
+              smoothFactor = 0,
+              fillOpacity = 0.5,
+              color = ~pal_children(unemployed_with_children)) %>%
+  addLegend("bottomright",
+            pal = pal_children,
+            values = ~ unemployed_with_children,
+            title = "Families Without Secure Employment",
+            labFormat = labelFormat(suffix = "%"),
             opacity = 1)
 ```
 
 *** 
 ####__Dependents.__ 
 
-##### Children, dependent on parents and families, have minimal autonomy, and, therefore are vulnerable to their existing environment and circumstances. 
+##### Children, dependent on parents and families, have minimal autonomy, and, therefore are vulnerable to their existing environment and circumstances. The unemployment of parents has been shown to have negative effects on children in both the short- and long-term. 
   
-  
-### Distribution of Population over 64
-```{r elderly}
-
-# distribution of elderly
-pal_elderly <- colorNumeric(palette = "viridis", domain = detroit_vul_clean$elderly_z)
-
-detroit_vul_clean %>%
-  st_transform(crs = "+init=epsg:4326") %>%
-  leaflet(width = "100%") %>%
-  addProviderTiles(provider = "CartoDB.Positron") %>%
-  addPolygons(popup = ~str_extract(NAME, "^([^,]*)"),
-              stroke = FALSE,
-              smoothFactor = 0,
-              fillOpacity = 0.5,
-              color = ~pal_elderly(elderly_z)) %>%
-  addLegend("bottomright",
-            pal = pal_elderly,
-            values = ~ elderly_z,
-            title = "elderly",
-            opacity = 1)
-```
-
-**** 
-#### __Dependence.__
-
-##### While not true for all, the elderly may lack the physical abilities necessary to live independently and are more likely to need access to social programs. 
-
   
 ### Amidst its rejuvenation, the inclusion of the city's most vulnerable groups is vital to ensure the future success of Detroit.  
 ```{r vulnerability index}
+
+# z-scores for each vulnerability variable
+detroit_vul_clean <- detroit_vul_clean %>%
+  mutate(
+    pov_z = (pov_share - mean(pov_share, na.rm = TRUE))/sd(pov_share, na.rm = TRUE),
+    non_white_z = (non_white - mean(non_white, na.rm = TRUE))/sd(non_white, na.rm = TRUE),
+    pop_under_17_z = (pop_under_17 - mean(pop_under_17, na.rm = TRUE))/sd(pop_under_17, na.rm = TRUE),
+    unemployed_z = (unemployed_with_children - mean(unemployed_with_children, na.rm = TRUE))/sd(unemployed_with_children, na.rm = TRUE)
+  )
+
+detroit_vul_clean <- detroit_vul_clean %>%
+  mutate(vul_index = (pov_z + non_white_z + pop_under_17_z + unemployed_z)/4) %>%
+  select(GEOID, NAME, CountyFIPS, pov_z, non_white_z, pop_under_17_z, unemployed_z, vul_index)
 
 # map of vulnerability index 
 pal_vul <- colorNumeric(palette = "viridis", domain = detroit_vul_clean$vul_index)
@@ -219,14 +253,10 @@ detroit_vul_clean %>%
 ```
 
 *** 
-#### __Social Vulnerability.__ 
-##### Social vulnerability has been used to describe the characteristics of a population that influence how they will be affected by a natural hazard or disaster event. Common factors that influence this index include levels of monetary and material resources, access to appropriate information, strength of social networks, physical abilities, and political influence. More generally, populations with less socio-economic resources or that have limited physical abilities will tend to be more vulnerable to physical or long-term economic harm. 
-
-##### Using easily accessible census data, a simple version of the Social Vulnerability Index can show those areas in Detroit that are home to the most vulnerable populations. 
-
-
-
-
-
-
+#### __At Risk Index.__   
+##### The index includes standardized measures of those demographic characteristics shown previously - low-income households, non-white population, children under the age of 17, and families with unemployed parents.
+  
+##### The goal of this analysis is to show the areas in which the most at-risk children are living in the city of Detroit. Green and yellow tracts represent areas that have an index score 1.5 and 2.5 standard deviations above the mean. Or, in other words, areas with above average rates of at-risk children.
+  
+##### While Detroit continues to rebuild, both the city and the state of Michigan need to continue to invest in improvements to the child care system and expand investments in adult education and workforce development for parents.   
 
